@@ -22,6 +22,7 @@ public:
     void solve();
     void printLine(int i, rational<int> **array, int biggestNumLen, int firstRow);
     void print2Matrices(rational<int> **arr1, rational<int> **arr2, QString text);
+    void print2Determinates(rational<int> **arr1, rational<int> **arr2, QString text);
     void print();
     void write(QString s);
     QString CheckIfAllZeroesAndSwap();
@@ -30,7 +31,17 @@ public:
     void reset1();
     void reset2();
     bool allValuesInRowIsZero(int row);
+    void printResults(bool canProceed);
     void addRow(int i);
+    bool solve1();
+    void jordan();
+    void solve3();
+    void ignoreAndRecurse(std::vector <std::array<rational<int>, 10>>, int, int, int);
+    rational<int> determinate(std::vector <std::array<rational<int>, 10>>, int, int, int);
+    std::vector <std::array<rational<int>, 10>> ignore(std::vector <std::array<rational<int>, 10>>, int, int, int);
+    void applyOnNonZeroInRow(int n);
+    void multAndAddColumn(int c1, rational<int> val, int c2);
+
 
 private slots:
     void on_setVarNum_clicked();
@@ -48,6 +59,8 @@ private slots:
     void on_equations_currentIndexChanged(int index);
 
     void on_remove_clicked();
+
+    void on_jordan_clicked();
 
 private:
     Ui::MainWindow *ui;
