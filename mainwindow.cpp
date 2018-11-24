@@ -5,13 +5,15 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDir>
+#include <vector>
+#include <math.h>
 
 using boost::rational;
 
 int vars = 0, eq = 0, lastColumn = 0, lastRow = 0, currIndex = 0;
-rational<int> **arr, **copy, *results;
+rational<int> **arr, **copy, *results, **cofactors, **inverse, **tempPrint;
 QString console = "";
-bool NotFirstTime = false;
+bool NotFirstTime = false, infflag = false;
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -40,18 +42,21 @@ void MainWindow::reset1()
         ui->steps->clear();
 
     }
+    NotFirstTime = false;
+    infflag = false;
 
 }
 
 void MainWindow::reset2()
 {
-    vars = 0; eq = 0;
+    vars = 0; eq = 0; infflag = false;
     ui->equations->clear();
     ui->varNum->setValue(1);
     ui->text->clear();
     ui->add->setEnabled(false);
     ui->setVarNum->setEnabled(true);
     ui->solve->setEnabled(false);
+    ui->jordan->setEnabled(false);
 }
 
 MainWindow::~MainWindow()
@@ -65,6 +70,7 @@ void MainWindow::on_setVarNum_clicked()
     ui->setVarNum->setEnabled(false);
     ui->reset->setEnabled(true);
     ui->solve->setEnabled(true);
+    ui->jordan->setEnabled(true);
     vars = ui->varNum->value();
     ui->equations->clear();
 }
@@ -99,7 +105,7 @@ QString getNums(QString s)
         if (added > vars) break;
     }
 
-    for (int i = added; i <= vars; i++) num += "0 ";
+//    for (int i = added; i <= vars; i++) num += "0 ";
 
     return num;
 }
@@ -174,6 +180,21 @@ void MainWindow::init()
 
     for (int i = 0; i < eq; i++)
         copy[i] = new rational<int>[vars+1];
+
+    cofactors = new rational<int>*[eq];
+
+    for (int i = 0; i < eq; i++)
+        cofactors[i] = new rational<int>[vars+1];
+
+    inverse = new rational<int>*[eq];
+
+    for (int i = 0; i < eq; i++)
+        inverse[i] = new rational<int>[vars+1];
+
+    tempPrint = new rational<int>*[eq];
+
+    for (int i = 0; i < eq; i++)
+        tempPrint[i] = new rational<int>[vars+1];
 
     for (int i = 0; i < eq; i++)
     {
@@ -349,7 +370,7 @@ void MainWindow::printLine(int i, rational<int> **array, int biggestNumLen, int 
         write(spaces);
         write(num);
 
-        if (j == vars - 1) write(" ║");
+        if (j == vars - 1) write(" ");
     }
 
     write(" ║");
@@ -381,8 +402,8 @@ void MainWindow::print2Matrices(rational<int> **arr1, rational<int> **arr2 = nul
     QString spaces = "  ";
     for (int i = 0; i < text.length()+2; i++) spaces += ' ';
 
-    QString space1 = nSpaces(4 + (vars) * biggestNumLen + arr1row);
-    QString space2 = nSpaces(4 + (vars) * biggestNumLen + arr2row);
+    QString space1 = nSpaces(3 + (vars) * biggestNumLen + arr1row);
+    QString space2 = nSpaces(3 + (vars) * biggestNumLen + arr2row);
 
     write("╔" + space1 + "╗");
 
@@ -407,6 +428,7 @@ void MainWindow::print2Matrices(rational<int> **arr1, rational<int> **arr2 = nul
 
         write("\n");
     }
+
     write("╚" + space1 + "╝");
 
     if (arr2 != nullptr)
@@ -414,6 +436,59 @@ void MainWindow::print2Matrices(rational<int> **arr1, rational<int> **arr2 = nul
         write(nSpaces(45) + "╚" + space2 + "╝");
     }
     write("\n");
+}
+
+void MainWindow::print2Determinates(rational<int> **arr1, rational<int> **arr2 = nullptr, QString text = "")
+{
+    int biggestNumLen = 0;
+
+    for (int i = 0; i < eq; i++)
+    {
+        for (int j = 0; j <= vars; j++)
+        {
+            biggestNumLen = max(biggestNumLen, getRational(arr1[i][j]).length());
+            if (arr2 != nullptr) biggestNumLen = max(biggestNumLen, getRational(arr2[i][j]).length());
+        }
+    }
+
+    int arr1row = 0, arr2row = 0;
+
+    for (int i = 0; i < eq; i++)
+    {
+        arr1row = max(arr1row, getRational(arr1[i][0]).length());
+        if (arr2 != nullptr) arr2row = max(arr1row, getRational(arr2[i][0]).length());
+    }
+
+    biggestNumLen += 2;
+    int mid = eq/2;
+    QString spaces = "  ";
+    for (int i = 0; i < text.length()+2; i++) spaces += ' ';
+
+    QString space1 = nSpaces(3 + (vars) * biggestNumLen + arr1row);
+    QString space2 = nSpaces(3 + (vars) * biggestNumLen + arr2row);
+
+//    write("║" + space1 + "║\n");
+
+    for (int i = 0; i < eq; i++)
+    {
+        if (i == mid && !(eq & 1))
+        {
+            write("║" + space1 + "║");
+            write(text +"\n");
+
+        }
+
+        printLine(i, arr1, biggestNumLen, arr1row);
+
+
+
+        if (i == mid && (eq & 1))
+            write(text);
+
+        write("\n");
+    }
+
+//    write("║" + space1 + "║\n");
 }
 
 void MainWindow::print()
@@ -464,82 +539,9 @@ bool allZerosFrom(int index)
     return true;
 }
 
-void MainWindow::solve()
+void MainWindow::printResults(bool canProceed)
 {
-    reset1();
-    init();
-
-    if (eq == 0)
-    {
-        write("Add at least " + QString::number(vars) + " equations.\n\n");
-        return;
-    }else if (eq < vars)
-    {
-        write("The number of equations is less than the number of variables, No enough information, Cannot proceed.\n\n");
-        return;
-    }
-
-    bool canProceed = true;
-
-    int numOfEq = eq;
-
-    NotFirstTime = true;
-
-
-    int counter = 0;
     QString text;
-    while (lastColumn < vars && lastRow < eq && canProceed)
-    {
-        counter++;
-
-        if (allValuesInRowIsZero(lastRow))
-        {
-            if (arr[lastRow][vars] == 0)
-            {
-                numOfEq--;
-                if (lastRow != eq - 1 && !allZerosFrom(lastRow))
-                {
-                    write("Row " + QString::number(lastRow+1) + " will be moved to the buttom for the ease of reading.\n\n");
-                    moveRowToTheButtom(lastRow);
-                }
-            }
-            else
-            {
-                write("The function number " + QString::number(lastRow+1) + " is indicating that sum of zeroes is " + getRational(arr[lastRow][vars]) + " which is wrong. Cannot proceed.\n\n");
-                canProceed = false;
-            }
-        }
-
-        if (numOfEq < vars && canProceed)
-        {
-            write("The number of equations is less than the number of variables, No enough information, Cannot proceed.\n\n");
-            canProceed = false;
-        }
-
-        if (!canProceed) break;
-
-        setNextColumn();
-
-        write("Row Number " + QString::number(counter) + ":════════════════════\n\n");
-
-        copyArr();
-
-        text = CheckIfAllZeroesAndSwap();
-        printAndCopy(text, "Substituting M[" + QString::number(lastRow+1) + ',' + QString::number(lastColumn+1) + "] with a non-zero element");
-
-        text = setToOne();
-        printAndCopy(text, "Transforming m[" + QString::number(lastRow+1) + ',' + QString::number(lastColumn+1) + "] to 1");
-
-        setRemainingToZero();
-
-        write("\n\n");
-
-        if (lastColumn >= vars || lastRow >= eq) break;
-
-        lastColumn++;
-        lastRow++;
-    }
-
     if (canProceed)
     {
         write("Final Matrix:\n");
@@ -590,13 +592,407 @@ void MainWindow::solve()
             write("x" + QString::number(i+1) + " = ∞.\n");
         }
     }
+}
+
+bool MainWindow::solve1()
+{
+    reset1();
+    init();
+
+    if (eq == 0)
+    {
+        write("Add at least " + QString::number(vars) + " equations.\n\n");
+        return false;
+    }else if (eq < vars)
+    {
+        write("The number of equations is less than the number of variables, Not enough information, Cannot proceed.\n\n");
+        infflag = true;
+        return false;
+    }
+
+    bool canProceed = true;
+
+    int numOfEq = eq;
+
+    NotFirstTime = true;
 
 
+    int counter = 0;
+    QString text;
+    while (lastColumn < vars && lastRow < eq && canProceed)
+    {
+        counter++;
+
+        if (allValuesInRowIsZero(lastRow))
+        {
+            if (arr[lastRow][vars] == 0)
+            {
+                numOfEq--;
+                if (lastRow != eq - 1 && !allZerosFrom(lastRow))
+                {
+                    write("Row " + QString::number(lastRow+1) + " will be moved to the buttom for the ease of reading.\n\n");
+                    moveRowToTheButtom(lastRow);
+                }
+            }
+            else
+            {
+                write("The function number " + QString::number(lastRow+1) + " is indicating that sum of zeroes is " + getRational(arr[lastRow][vars]) + " which is wrong. Cannot proceed.\n\n");
+                canProceed = false;
+            }
+        }
+
+        if (numOfEq < vars && canProceed)
+        {
+            write("The number of equations is less than the number of variables, Not enough information, Cannot proceed.\n\n");
+            infflag = true;
+            canProceed = false;
+        }
+
+        if (!canProceed) break;
+
+        setNextColumn();
+
+        copyArr();
+
+        bool writeRowNumber = false;
+
+        text = CheckIfAllZeroesAndSwap();
+
+        if (text != "" && !writeRowNumber)
+        {
+            writeRowNumber = true;
+            write("Row Number " + QString::number(counter) + ":════════════════════\n\n");
+        }
+
+        printAndCopy(text, "Substituting M[" + QString::number(lastRow+1) + ',' + QString::number(lastColumn+1) + "] with a non-zero element");
+
+        text = setToOne();
+
+        if (text != "" && !writeRowNumber)
+        {
+            writeRowNumber = true;
+            write("Row Number " + QString::number(counter) + ":════════════════════\n\n");
+        }
+
+        printAndCopy(text, "Transforming m[" + QString::number(lastRow+1) + ',' + QString::number(lastColumn+1) + "] to 1");
+
+        setRemainingToZero();
+
+        write("\n\n");
+
+        if (lastColumn >= vars || lastRow >= eq) break;
+
+        lastColumn++;
+        lastRow++;
+    }
+    return canProceed;
+}
+
+void MainWindow::multAndAddColumn(int c1, rational<int> val, int c2)
+{
+    for (int i = 0; i <= vars; i++)
+    {
+        arr[c2][i] += arr[c1][i] * val;
+    }
+}
+
+void MainWindow::applyOnNonZeroInRow(int n)
+{
+    rational<int> val;
+    for (int i = n-1; i >= 0; i--)
+    {
+        if (arr[i][n] != 0)
+        {
+            if (arr[n][n] == 0)
+                val = 0;
+            else
+                val = -arr[i][n]/arr[n][n];
+            multAndAddColumn(n, val, i);
+
+            std::string s1 = "Remove all the elements above the leading one in column ";
+            std::string s2 = std::to_string(n+1);
+            std::string s3 = s1 + s2;
+            char const *pchar = s3.c_str();
+
+            printAndCopy("R" + QString::number(i+1) + " = R" + QString::number(i+1) + " + R" + QString::number(n+1) + " * " + getRational(val), pchar);
+        }
+    }
+}
+
+void MainWindow::jordan()
+{
+    for (int i = vars-1; i >= 0; i--)
+    {
+        if (infflag) break;
+        applyOnNonZeroInRow(i);
+    }
 }
 
 void MainWindow::on_solve_clicked()
 {
-    solve();
+    solve3();
+}
+
+void MainWindow::solve3()
+{
+    reset1();
+    init();
+
+    if (eq == 0)
+    {
+        write("Please enter a matrix.\n\n");
+        return;
+    }else if (eq != vars)
+    {
+        write("This matrix isn't square and has no inverse.\n\n");
+        return;
+    }
+
+    std::vector <std::array<rational<int>, 10>> staticvec(20);
+    for (int i = 0; i < eq; i++)
+    {
+        for (int j = 0; j < vars; j++)
+        {
+            staticvec[i][j] = arr[i][j];
+        }
+    }
+
+    /* PRINT GIVEN MATRIX */
+
+    write("Calculating the inverse of this matrix: \n");
+
+    vars--;
+    print2Matrices(arr);
+    vars++;
+
+    write("\n\n");
+
+    /* ********************************** */
+
+    /* DETERMINATE AND ITS INVERSE */
+
+    rational<int> det = determinate(staticvec, eq, 0, 0);
+
+    write("Determinate: \n\n");
+
+    vars--;
+    print2Determinates(arr, nullptr, " = " + getRational(det));
+    vars++;
+
+
+    /* IF DETERMINATE == ZERO */
+    if (det.numerator() == 0){
+        write("Thus, this matrix has no inverse.\n\n");
+        return;
+    }
+
+    write("\n\n");
+    rational<int> inversedet = 1;
+    inversedet /= det;
+
+    /* ********************************** */
+
+
+    /* START OF ADJOINT CALCULATION */
+
+    ignoreAndRecurse(staticvec, eq, 0, 0);
+
+    /* ********************************** */
+
+
+    /* PRINT COFACTORS */
+
+    write("Cofactors of Matrix: \n");
+
+    vars--;
+    print2Matrices(cofactors);
+    vars++;
+
+    write("\n\n");
+
+    /* ********************************** */
+
+    /* CALCULATE ADJOINT MATRIX */
+
+    for (int i = 0; i < eq; i++)
+    {
+        for (int j = 0; j < vars; j++)
+        {
+            inverse[j][i] = (cofactors[i][j]);
+        }
+    }
+
+    /* ********************************** */
+
+    /* PRINT ADJOINT MATRIX */
+
+    write("Adjoint of Matrix: \n");
+
+    vars--;
+    print2Matrices(inverse);
+    vars++;
+
+    write("\n\n");
+
+    /* ********************************** */
+
+    /* CALCULATE INVERSE */
+
+    for (int i = 0; i < eq; i++)
+    {
+        for (int j = 0; j < vars; j++)
+        {
+            inverse[j][i] *= inversedet;
+        }
+    }
+
+    /* PRINT INVERSE */
+
+    write("Inverse of Matrix: \n");
+
+    vars--;
+    print2Matrices(inverse);
+    vars++;
+
+    write("\n\n");
+
+    /* ********************************** */
+
+    return;
+}
+
+rational<int> MainWindow::determinate(std::vector <std::array<rational<int>, 10>> vec1, int size, int cofactors_row, int cofactors_col)
+{
+    // base case
+    if (size == 1)
+    {
+        rational<int> result = vec1[0][0];
+        if ((cofactors_col + cofactors_row + 1) & 1)
+            result = (vec1[0][0] * -1);
+    }
+    if (size == 2)
+    {
+
+
+        rational<int> result;
+        result = (vec1[0][0] * vec1[1][1]) - (vec1[0][1] * vec1[1][0]);
+        return result;
+    }
+
+    std::vector <std::array<rational<int>, 10>> vec2(20);
+    rational<int> temp = 1, result = 0;
+    for (int ignorerow = 0; ignorerow < size; ignorerow++)
+    {
+
+            vec2 = ignore(vec1, size, ignorerow, 0);
+
+            temp = vec1[ignorerow][0] * determinate(vec2, size-1, ignorerow, 0);
+            if (ignorerow & 1)
+            {
+                temp *= -1;
+            }
+
+            result += temp;
+    }
+    return result;
+}
+
+std::vector <std::array<rational<int>, 10>> MainWindow::ignore(std::vector <std::array<rational<int>, 10>> vec1, int size, int ignorerow, int ignorecol)
+{
+    std::vector <std::array<rational<int>, 10>> vec2(20);
+    int r = 0, c = 0;
+    for (int i = 0; i < size; i++)
+    {
+        c = 0;
+        if (i == ignorerow){
+            continue;
+        }
+
+        for (int j = 0; j < size; j++)
+        {
+            if (j == ignorecol){
+                continue;
+            }
+            vec2[r][c] = vec1[i][j];
+            c++;
+        }
+        r++;
+    }
+    return vec2;
+}
+
+void MainWindow::ignoreAndRecurse(std::vector <std::array<rational<int>, 10>> vec1, int size, int cofactors_row, int cofactors_col)
+{
+
+    if (size == 1)
+        cofactors[0][0] = 1;
+
+    if (size == 2)
+    {
+        cofactors[0][0] = vec1[1][1];
+        cofactors[1][1] = vec1[0][0];
+        cofactors[0][1] = -vec1[1][0];
+        cofactors[1][0] = -vec1[0][1];
+        return;
+    }
+
+    std::vector <std::array<rational<int>, 10>> vec2(20);
+    int r = 0, c = 0;
+
+    write("Printing Minors:\n\n");
+
+    for (int ignorerow = 0; ignorerow < size; ignorerow++)
+    {
+        for (int ignorecol = 0; ignorecol < size; ignorecol++)
+        {
+            r = 0; c = 0;
+
+            for (int i = 0; i < size; i++)
+            {
+                c = 0;
+                if (i == ignorerow){
+                    continue;
+                }
+
+                for (int j = 0; j < size; j++)
+                {
+                    if (j == ignorecol){
+                        continue;
+                    }
+                    vec2[r][c] = vec1[i][j];
+                    c++;
+                }
+                r++;
+            }
+
+            // smaller Matrix is here!
+            rational<int> result = determinate(vec2, size-1, ignorerow, ignorecol);
+            cofactors[ignorerow][ignorecol] = result;
+
+            write("M[" + QString::number(ignorerow+1) +"][" + QString::number(ignorecol+1) +"]:\n\n");
+
+            /* COPY vec2 TO tempPrint ARRAY */
+            for (int i = 0; i < size-1; i++)
+            {
+                for (int j = 0; j < size-1; j++)
+                {
+                    tempPrint[i][j] = vec2[i][j];
+                }
+            }
+
+            /* PRINT MINOR */
+            vars -=2; eq--;
+            print2Determinates(tempPrint, nullptr, " = " + getRational(cofactors[ignorerow][ignorecol]));
+            vars +=2; eq++;
+            write("\n");
+            /* *********** */
+
+            if ((ignorerow + ignorecol) & 1){
+                cofactors[ignorerow][ignorecol] *= -1;
+            }
+        }
+    }
+    write("\n");
 }
 
 void MainWindow::on_reset_clicked()
@@ -628,7 +1024,7 @@ void MainWindow::on_reset_clicked()
 
 void MainWindow::on_cridits_clicked()
 {
-    write("\n\n\nCridits: \n");
+    write("\n\n\nCredits: \n");
     QFile credits(QDir::current().absolutePath() + "/credits");
     if (!credits.open(QIODevice::ReadOnly))
     {
@@ -663,4 +1059,11 @@ void MainWindow::on_remove_clicked()
         ui->update->setEnabled(false);
         ui->remove->setEnabled(false);
     }
+}
+
+void MainWindow::on_jordan_clicked()
+{
+    bool canProceed = solve1();
+    jordan();
+    printResults(canProceed);
 }
